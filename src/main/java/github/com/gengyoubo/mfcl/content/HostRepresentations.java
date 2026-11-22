@@ -28,7 +28,25 @@ public final class HostRepresentations implements LegacyHostRepresentations {
         catch (RuntimeException failure) { throw failure; }
         catch (Exception failure) { throw new IllegalStateException("Cannot register host representation", failure); }
     }
-    @Override public synchronized LegacyStack item(String value) {
+    /**
+     * Host work, usually reached from inside a legacy call: API calls and legacy translations both run there. Forge's
+     * EventBus resolves each newly loaded class's supertype through the context loader, so a host class first loaded
+     * under the legacy loader fails to load for the rest of the session.
+     */
+    private static <T> T host(java.util.concurrent.Callable<T> work) {
+        var thread = Thread.currentThread(); var previous = thread.getContextClassLoader();
+        try { thread.setContextClassLoader(HostRepresentations.class.getClassLoader()); return work.call(); }
+        catch (RuntimeException failure) { throw failure; }
+        catch (Exception failure) { throw new IllegalStateException("Cannot register host representation", failure); }
+        finally { thread.setContextClassLoader(previous); }
+    }
+    private static java.util.function.Supplier<String> hostName(java.util.function.Supplier<String> name) {
+        return () -> host(name::get);
+    }
+    @Override public synchronized LegacyStack item(String value) { return host(() -> hostItem(value)); }
+    @Override public synchronized LegacyStack block(String value) { return host(() -> hostBlock(value)); }
+    @Override public synchronized String entity(String value) { return host(() -> hostEntity(value)); }
+    private LegacyStack hostItem(String value) {
         var name = id(value);
         if (!BuiltInRegistries.ITEM.containsKey(name)) throw new IllegalArgumentException("Unknown host item: " + value);
         Item item = BuiltInRegistries.ITEM.get(name);
@@ -46,13 +64,13 @@ public final class HostRepresentations implements LegacyHostRepresentations {
             String key = key("item", value);
             type.getMethod("func_77655_b", String.class).invoke(old, key);
             LegacyHostRegistry.registerItem(loader, key, old);
-            LegacyHostRegistry.label(loader, "item." + key + ".name", () -> new ItemStack(item).getHoverName().getString());
+            LegacyHostRegistry.label(loader, "item." + key + ".name", hostName(() -> new ItemStack(item).getHoverName().getString()));
             var stack = new LegacyStack(key, 0, 1, "");
             items.put(item, stack); reverseItems.put(key, item);
             return stack;
         });
     }
-    @Override public synchronized LegacyStack block(String value) {
+    private LegacyStack hostBlock(String value) {
         var name = id(value);
         if (!BuiltInRegistries.BLOCK.containsKey(name)) throw new IllegalArgumentException("Unknown host block: " + value);
         var block = BuiltInRegistries.BLOCK.get(name);
@@ -103,12 +121,12 @@ public final class HostRepresentations implements LegacyHostRepresentations {
             type.getMethod("func_149663_c", String.class).invoke(old, key);
             Object item = loader.loadClass("net.minecraft.item.ItemBlock").getConstructor(type).newInstance(old);
             LegacyHostRegistry.registerBlock(loader, key, old, item);
-            LegacyHostRegistry.label(loader, "tile." + key + ".name", () -> block.getName().getString());
+            LegacyHostRegistry.label(loader, "tile." + key + ".name", hostName(() -> block.getName().getString()));
             reverseBlocks.put(key, block);
             return new LegacyStack(key, 0, 1, "");
         });
     }
-    @Override public synchronized String entity(String value) {
+    private String hostEntity(String value) {
         var name = id(value);
         if (!BuiltInRegistries.ENTITY_TYPE.containsKey(name)) throw new IllegalArgumentException("Unknown host entity: " + value);
         if (entities.containsKey(value)) return entities.get(value);
@@ -149,7 +167,7 @@ public final class HostRepresentations implements LegacyHostRepresentations {
             var type = (Class<?>) loader.getClass().getMethod("defineLegacyClass", String.class, byte[].class, int.class, int.class)
                     .invoke(loader, binary.replace('/', '.'), bytes, 0, bytes.length);
             names.put(key, type); ((Map<Class<?>, String>) list.getField("field_75626_c").get(null)).put(type, key);
-            LegacyHostRegistry.label(loader, "entity." + key + ".name", () -> BuiltInRegistries.ENTITY_TYPE.get(name).getDescription().getString());
+            LegacyHostRegistry.label(loader, "entity." + key + ".name", hostName(() -> BuiltInRegistries.ENTITY_TYPE.get(name).getDescription().getString()));
             entities.put(value, key); entityClasses.put(value, type); return key;
         });
     }

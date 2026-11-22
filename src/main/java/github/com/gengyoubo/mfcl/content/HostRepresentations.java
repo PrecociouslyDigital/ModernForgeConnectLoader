@@ -64,7 +64,7 @@ public final class HostRepresentations implements LegacyHostRepresentations {
             String key = key("item", value);
             type.getMethod("func_77655_b", String.class).invoke(old, key);
             LegacyHostRegistry.registerItem(loader, key, old);
-            LegacyHostRegistry.label(loader, "item." + key + ".name", hostName(() -> new ItemStack(item).getHoverName().getString()));
+            LegacyHostRegistry.label(loader, "item." + key + ".name", hostName(() -> item.getDescription().getString()));
             var stack = new LegacyStack(key, 0, 1, "");
             items.put(item, stack); reverseItems.put(key, item);
             return stack;
